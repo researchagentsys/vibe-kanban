@@ -1,0 +1,60 @@
+# Default-deny network policy for tenant sandboxes (P1, Kubernetes).
+# Requires a CNI that enforces egress NetworkPolicy (Terway/Calico on ACK).
+# Stock policy alone may not block metadata on every CNI — verify, and pair with
+# the host/VPC controls and a zero-permission RAM role.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vk-tenant-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: vibe-kanban-sandbox
+  policyTypes:
+    - Egress
+    - Ingress
+  ingress:
+    # Only the gateway may reach the sandbox; tenants are not exposed directly.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vk-gateway
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    # Allow outbound 80/443 to the public internet EXCEPT metadata + private ranges.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 100.100.100.200/32   # Alibaba Cloud metadata — HARD block
+              - 169.254.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 80 }
+    # DNS — restrict to in-cluster CoreDNS (kube-system) ONLY. Do NOT allow
+    # port 53 to 0.0.0.0/0: that enables DNS-tunnel exfiltration and probing
+    # 100.100.100.200 on port 53. CoreDNS forwards to the upstream resolver itself.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# Optional namespace-wide default-deny (defense-in-depth). Apply in the tenant
+# namespace so any pod lacking an explicit allow gets no traffic. Ensure the
+# gateway and other workloads have their own allow policies before enabling this.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
