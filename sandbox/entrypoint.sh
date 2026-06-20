@@ -59,7 +59,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
   "show_release_notes": false,
   "language": "BROWSER",
   "git_branch_prefix": "vk",
-  "showcases": { "seen_features": [] },
+  "showcases": { "seen_features": ["workspaces-guide"] },
   "pr_auto_description_enabled": true,
   "commit_reminder_enabled": true,
   "send_message_shortcut": "ModifierEnter",
