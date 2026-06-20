@@ -95,3 +95,8 @@ vibe-kanban-cloud/
 *.ts.net.key
 Caddyfile
 Caddyfile.dev
+
+# Local debug / verification artifacts (Playwright MCP output, ad-hoc screenshots)
+.playwright-mcp/
+/coding-sandbox-live.png
+/iframe-fixed.jpeg
