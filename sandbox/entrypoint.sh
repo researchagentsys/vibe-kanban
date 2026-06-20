@@ -15,6 +15,16 @@ git config --global user.name  "${GIT_AUTHOR_NAME:-vibe-agent}"
 git config --global user.email "${GIT_AUTHOR_EMAIL:-agent@example.invalid}"
 git config --global --add safe.directory '*'
 
+# 2.5) Surface the project storage repo (/workspace) at the directory browser's
+#      default location. vibe-kanban's repo picker opens at the server's $HOME and
+#      lists git repos there; this symlink makes /workspace appear as a one-click
+#      git repo, so users don't have to type the path manually (nor accidentally
+#      create repos under $HOME instead of the mounted storage). The git-repos scan
+#      follows the symlink and detects /workspace/.git. No-op if /workspace absent.
+if [ -d /workspace ]; then
+  ln -sfn /workspace "$HOME/workspace" || true
+fi
+
 # 3) REQUIRED: the orchestrator must inject the tenant's public gateway origin,
 #    or the backend rejects browser/API requests with 403 (origin check).
 : "${VK_ALLOWED_ORIGINS:?must be set by the orchestrator, e.g. https://t-<id>.app.example.com}"
