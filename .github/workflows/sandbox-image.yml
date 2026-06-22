@@ -6,12 +6,15 @@
 # 触发:① 手动(workflow_dispatch,可选 tag/平台);② 打 tag `sandbox-v*` 自动构建。
 #   不在每次 push main 触发——整镜像含 Rust + 前端全量构建,代价高,按需/按 tag 发布。
 #
-# 需在仓库 Settings → Secrets 配置(ACR 凭证):
-#   ACR_REGISTRY   如 registry.cn-hangzhou.aliyuncs.com
-#   ACR_NAMESPACE  如 med-research
-#   ACR_USERNAME / ACR_PASSWORD   ACR 访问凭证(建议用 RAM 子账号的容器镜像专用凭证)
+# 需在仓库 Settings → Secrets and variables → Actions 配置(对应 ACR 仓库基本信息):
+#   ACR_REGISTRY   公网地址,如 crpi-7q8ocyuobi3vre87.cn-hangzhou.personal.cr.aliyuncs.com
+#                  (GitHub runner 在阿里云 VPC 外,必须用公网地址,不是 -vpc 那个)
+#   ACR_NAMESPACE  命名空间,如 med_agent
+#   ACR_REPO       镜像仓库名,如 med_agent_repo
+#   ACR_USERNAME   阿里云账号全名(或 RAM 子账号用户名)
+#   ACR_PASSWORD   访问凭证密码(ACR「访问凭证」页设置的,**不是**阿里云登录密码)
 #
-# 产出:镜像 ${ACR_REGISTRY}/${ACR_NAMESPACE}/vibe-kanban-sandbox:<tag> + 不可变 digest。
+# 产出:镜像 ${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}:<tag> + 不可变 digest。
 #   把 job summary 里打印的 <name>@sha256:... 填到 med prod 的 SANDBOX_CODING_IMAGE。
 
 name: sandbox-image
@@ -47,7 +50,7 @@ jobs:
       - name: 校验 ACR secrets 已配置(缺失则提前失败,不静默)
         run: |
           missing=()
-          for s in ACR_REGISTRY ACR_NAMESPACE ACR_USERNAME ACR_PASSWORD; do
+          for s in ACR_REGISTRY ACR_NAMESPACE ACR_REPO ACR_USERNAME ACR_PASSWORD; do
             if [ -z "${!s}" ]; then missing+=("$s"); fi
           done
           if [ ${#missing[@]} -ne 0 ]; then
@@ -57,6 +60,7 @@ jobs:
         env:
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_REPO: ${{ secrets.ACR_REPO }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
 
@@ -76,7 +80,7 @@ jobs:
       - name: 计算 tags
         id: meta
         run: |
-          image="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/vibe-kanban-sandbox"
+          image="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_REPO }}"
           tag="${{ github.event.inputs.image_tag }}"
           # tag push 时用 git tag(去掉 sandbox- 前缀);手动时用输入(默认 edge)。
           if [ "${{ github.ref_type }}" = "tag" ]; then
