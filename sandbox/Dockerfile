@@ -54,6 +54,7 @@ FROM rust:1.93-slim-bookworm AS builder
 # VK_SHARED_API_BASE is optional; leave empty to disable remote/cloud features.
 ARG VK_SHARED_API_BASE=""
 ARG APT_MIRROR
+ARG RUST_MIRROR
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 ENV CARGO_TARGET_DIR=/app/target
@@ -71,8 +72,15 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
     && rm -rf /var/lib/apt/lists/*
 
 # rust-toolchain.toml pins the exact nightly; this line makes rustup install it.
+# RUST_MIRROR(如 https://rsproxy.cn)给公网带宽小的主机加速 rustup 工具链 + crates 下载;留空=上游。
 COPY rust-toolchain.toml ./
-RUN cargo --version >/dev/null
+RUN if [ -n "${RUST_MIRROR}" ]; then \
+      export RUSTUP_DIST_SERVER="${RUST_MIRROR}" RUSTUP_UPDATE_ROOT="${RUST_MIRROR}/rustup"; \
+      mkdir -p "${CARGO_HOME:-/usr/local/cargo}"; \
+      printf '[source.crates-io]\nreplace-with = "mirror"\n[source.mirror]\nregistry = "sparse+%s/index/"\n' "${RUST_MIRROR}" \
+        > "${CARGO_HOME:-/usr/local/cargo}/config.toml"; \
+    fi; \
+    cargo --version >/dev/null
 
 # Copy the whole workspace. Simpler and more robust than enumerating every crate
 # manifest: cargo requires ALL workspace members' manifests to resolve the build.

@@ -30,11 +30,13 @@ IMAGE="${IMAGE:-med_agent_repo:${TAG}}"
 
 cd "$(git rev-parse --show-toplevel)" # 构建上下文 = 仓库根(镜像 COPY crates/ packages/)
 
-echo "[build] ${IMAGE}  platform=${PLATFORM}  context=${PWD}  apt_mirror=${APT_MIRROR:-<上游>}"
+echo "[build] ${IMAGE}  platform=${PLATFORM}  context=${PWD}  apt=${APT_MIRROR:-<上游>}  rust=${RUST_MIRROR:-<上游>}"
 # --load:把**单平台**镜像装进本机 docker(多平台不能 --load,故固定单平台)。
-# APT_MIRROR(如 mirrors.aliyun.com)给公网带宽小的主机加速 debian apt;留空=上游。
+# 公网带宽小的主机加速:APT_MIRROR(mirrors.aliyun.com,debian apt)+ RUST_MIRROR
+# (https://rsproxy.cn,rustup 工具链 + crates);留空=上游。
 docker buildx build --platform "${PLATFORM}" \
   ${APT_MIRROR:+--build-arg APT_MIRROR="${APT_MIRROR}"} \
+  ${RUST_MIRROR:+--build-arg RUST_MIRROR="${RUST_MIRROR}"} \
   -f sandbox/Dockerfile -t "${IMAGE}" --load .
 
 if [ -n "${PROD_SSH:-}" ]; then
