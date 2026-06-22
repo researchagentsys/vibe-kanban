@@ -11,6 +11,10 @@
 #   1. a Node runtime + pre-installed coding-agent CLIs (executors spawn `npx`),
 #   2. multi-tenant hardening + the /data volume contract (see sandbox/README.md).
 
+# debian apt 镜像源 host(如 mirrors.aliyun.com)——公网带宽小的主机上加速 apt;留空=上游 deb.debian.org。
+# 用法:docker build --build-arg APT_MIRROR=mirrors.aliyun.com ...
+ARG APT_MIRROR=""
+
 ############################
 # Stage 1 — build frontend #
 ############################
@@ -49,6 +53,7 @@ RUN pnpm -C packages/local-web build   # -> packages/local-web/dist (rust-embed 
 FROM rust:1.93-slim-bookworm AS builder
 # VK_SHARED_API_BASE is optional; leave empty to disable remote/cloud features.
 ARG VK_SHARED_API_BASE=""
+ARG APT_MIRROR
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 ENV CARGO_TARGET_DIR=/app/target
@@ -56,7 +61,12 @@ ENV SQLX_OFFLINE=true
 ENV VK_SHARED_API_BASE=${VK_SHARED_API_BASE}
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 可选:把 debian apt 源切到 APT_MIRROR(公网带宽小的主机上提速;留空=上游 deb.debian.org)。
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      sed -i "s@//deb.debian.org@//${APT_MIRROR}@g; s@//security.debian.org@//${APT_MIRROR}@g" /etc/apt/sources.list 2>/dev/null || true; \
+      for f in /etc/apt/sources.list.d/*.sources; do [ -e "$f" ] && sed -i "s@//deb.debian.org@//${APT_MIRROR}@g; s@//security.debian.org@//${APT_MIRROR}@g" "$f"; done; \
+    fi; \
+    apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates git libclang-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
@@ -84,10 +94,15 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
 # Stage 3 — hardened runtime
 ############################
 FROM node:20-bookworm-slim AS runtime
+ARG APT_MIRROR
 
 # git: agent commits/worktrees. tini: PID-1 reaping. ripgrep: some agents shell
 # out to `rg`. curl: healthcheck. openssh-client: git-over-ssh.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      sed -i "s@//deb.debian.org@//${APT_MIRROR}@g; s@//security.debian.org@//${APT_MIRROR}@g" /etc/apt/sources.list 2>/dev/null || true; \
+      for f in /etc/apt/sources.list.d/*.sources; do [ -e "$f" ] && sed -i "s@//deb.debian.org@//${APT_MIRROR}@g; s@//security.debian.org@//${APT_MIRROR}@g" "$f"; done; \
+    fi; \
+    apt-get update && apt-get install -y --no-install-recommends \
       git tini ripgrep ca-certificates curl openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --home-dir /data/home --shell /usr/sbin/nologin vk
