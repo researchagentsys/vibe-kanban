@@ -14,6 +14,16 @@
 #   3) 镜像约 1~2GB,save/传输按网速等。
 set -euo pipefail
 
+# 部署变量(PLATFORM/PROD_SSH/IMAGE)从 gitignored 的 sandbox/.deploy.env 读(若存在);
+# 该文件含部署目标信息、绝不入库(本仓为 public fork)。命令行 env 仍可覆盖。
+_here="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${_here}/.deploy.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "${_here}/.deploy.env"
+  set +a
+fi
+
 PLATFORM="${PLATFORM:-linux/amd64}"
 TAG="${TAG:-$(git rev-parse --short HEAD)}"
 IMAGE="${IMAGE:-med_agent_repo:${TAG}}"

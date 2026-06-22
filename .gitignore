@@ -100,3 +100,6 @@ Caddyfile.dev
 .playwright-mcp/
 /coding-sandbox-live.png
 /iframe-fixed.jpeg
+
+# 本地部署变量(prod 主机 SSH 别名 / 架构等部署目标信息)——绝不入库(本仓为 PUBLIC fork)。
+sandbox/.deploy.env
