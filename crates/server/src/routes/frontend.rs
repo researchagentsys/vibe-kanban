@@ -36,7 +36,8 @@ fn needs_base_subst(path: &str) -> bool {
 
 fn body_for(path: &str, data: Cow<'static, [u8]>) -> Body {
     if needs_base_subst(path) {
-        let replaced = String::from_utf8_lossy(&data).replace(BASE_PLACEHOLDER, &base_replacement());
+        let replaced =
+            String::from_utf8_lossy(&data).replace(BASE_PLACEHOLDER, &base_replacement());
         Body::from(replaced.into_bytes())
     } else {
         Body::from(data.into_owned())
