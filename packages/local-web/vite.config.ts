@@ -80,6 +80,12 @@ export default schemas;
 
 export default defineConfig({
   customLogger: createFilteredLogger(),
+  // Base public path. Default '/' (normal root deployment). The sandbox image
+  // builds with VITE_BASE_PATH=/__VKBASE__/ — a placeholder baked into every
+  // emitted asset/chunk/BASE_URL ref, which the container's server replaces at
+  // serve time with its configured prefix (VK_PUBLIC_PATH=/cs/<id>/), so one
+  // image can be reverse-proxied under any per-sandbox path prefix.
+  base: process.env.VITE_BASE_PATH || '/',
   publicDir: path.resolve(__dirname, '../public'),
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

@@ -77,15 +77,26 @@ function resolveScopedPath(
 ): string {
   const hostScope = options.hostScope ?? 'current';
 
-  if (hostScope === 'none') {
-    return pathOrUrl;
-  }
+  const scoped =
+    hostScope === 'none'
+      ? pathOrUrl
+      : hostScope === 'explicit'
+        ? scopeLocalApiPath(pathOrUrl, options.hostId ?? null)
+        : scopeLocalApiPath(pathOrUrl, getCurrentHostId());
 
-  if (hostScope === 'explicit') {
-    return scopeLocalApiPath(pathOrUrl, options.hostId ?? null);
-  }
+  return withBase(scoped);
+}
 
-  return scopeLocalApiPath(pathOrUrl, getCurrentHostId());
+// Prefix root-relative app paths with the deploy base (import.meta.env.BASE_URL,
+// '' when base is '/') so API + WS calls stay under the same prefix as the SPA.
+// Absolute URLs (http(s)/ws(s)://) are returned untouched. Single chokepoint —
+// applied via resolveScopedPath, which both makeLocalApiRequest and
+// openLocalApiWebSocket route through.
+function withBase(pathOrUrl: string): string {
+  if (/^[a-z]+:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+  if (!base) return pathOrUrl;
+  return pathOrUrl.startsWith('/') ? base + pathOrUrl : `${base}/${pathOrUrl}`;
 }
 
 const defaultTransport: LocalApiTransport = {

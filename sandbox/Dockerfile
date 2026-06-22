@@ -27,6 +27,9 @@ ENV PATH=${PNPM_HOME}:${PATH}
 ENV VITE_PUBLIC_POSTHOG_KEY=${POSTHOG_API_KEY}
 ENV VITE_PUBLIC_POSTHOG_HOST=${POSTHOG_API_ENDPOINT}
 ENV NODE_OPTIONS=--max-old-space-size=4096
+# 沙箱镜像总是被反代到 per-sandbox 路径前缀下。烤入占位 base,容器内 server 按 VK_PUBLIC_PATH
+# 服务时替换为 /cs/<id>/(默认空→/,standalone 不破)。见 crates/server/.../frontend.rs。
+ENV VITE_BASE_PATH=/__VKBASE__/
 RUN corepack enable && pnpm config set store-dir /pnpm/store
 
 # Lockfile + workspace manifests first, for a cached install layer.
