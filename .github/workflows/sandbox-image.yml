@@ -1,0 +1,121 @@
+# 构建并推送「多租户编码 Agent 沙箱」镜像(vibe-kanban + claude-code/codex)到 ACR。
+#
+# 这是 med-research-platform 编码沙箱在 prod 拉取的配套镜像
+# (agent 侧 SANDBOX_CODING_IMAGE 指向它,建议 digest 钉 + SANDBOX_REQUIRE_PINNED_IMAGE=1)。
+#
+# 触发:① 手动(workflow_dispatch,可选 tag/平台);② 打 tag `sandbox-v*` 自动构建。
+#   不在每次 push main 触发——整镜像含 Rust + 前端全量构建,代价高,按需/按 tag 发布。
+#
+# 需在仓库 Settings → Secrets 配置(ACR 凭证):
+#   ACR_REGISTRY   如 registry.cn-hangzhou.aliyuncs.com
+#   ACR_NAMESPACE  如 med-research
+#   ACR_USERNAME / ACR_PASSWORD   ACR 访问凭证(建议用 RAM 子账号的容器镜像专用凭证)
+#
+# 产出:镜像 ${ACR_REGISTRY}/${ACR_NAMESPACE}/vibe-kanban-sandbox:<tag> + 不可变 digest。
+#   把 job summary 里打印的 <name>@sha256:... 填到 med prod 的 SANDBOX_CODING_IMAGE。
+
+name: sandbox-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '镜像 tag(除 digest 外的可读 tag,如 v1.0.0;digest 才是 prod 引用)'
+        required: false
+        default: 'edge'
+      platforms:
+        description: '目标架构(必须匹配部署架构;arm64 在 x86 runner 上走 QEMU 很慢)'
+        required: false
+        default: 'linux/amd64'
+  push:
+    tags:
+      - 'sandbox-v*'
+
+concurrency:
+  group: sandbox-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 校验 ACR secrets 已配置(缺失则提前失败,不静默)
+        run: |
+          missing=()
+          for s in ACR_REGISTRY ACR_NAMESPACE ACR_USERNAME ACR_PASSWORD; do
+            if [ -z "${!s}" ]; then missing+=("$s"); fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::缺少 secrets: ${missing[*]}(仓库 Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up QEMU(仅多架构/跨架构需要)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login 到 ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 计算 tags
+        id: meta
+        run: |
+          image="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/vibe-kanban-sandbox"
+          tag="${{ github.event.inputs.image_tag }}"
+          # tag push 时用 git tag(去掉 sandbox- 前缀);手动时用输入(默认 edge)。
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#sandbox-}"
+          fi
+          sha="${GITHUB_SHA::12}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tags=$image:$tag,$image:git-$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .                      # 构建上下文 = 仓库根(镜像 COPY crates/ packages/)
+          file: sandbox/Dockerfile
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false               # ACR 对 OCI provenance 兼容性参差,关掉更稳
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            POSTHOG_API_KEY=
+            POSTHOG_API_ENDPOINT=
+            VK_SHARED_API_BASE=
+
+      - name: 输出不可变 digest(填到 med prod 的 SANDBOX_CODING_IMAGE)
+        run: |
+          ref="${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}"
+          {
+            echo "## 沙箱镜像已推送 ✅"
+            echo ""
+            echo "可读 tags: \`${{ steps.meta.outputs.tags }}\`"
+            echo ""
+            echo "**prod 用 digest 钉(把它填到 med agent 的 SANDBOX_CODING_IMAGE):**"
+            echo ""
+            echo "\`\`\`"
+            echo "SANDBOX_CODING_IMAGE=$ref"
+            echo "SANDBOX_REQUIRE_PINNED_IMAGE=1"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "digest ref: $ref"
